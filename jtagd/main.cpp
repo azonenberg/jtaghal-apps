@@ -55,6 +55,7 @@ int main(int argc, char* argv[])
 		{
 			API_DIGILENT,
 			API_FTDI,
+			API_FTDIFREE,
 			API_PIPE,
 			API_UNSPECIFIED
 		} api_type = API_UNSPECIFIED;
@@ -95,6 +96,8 @@ int main(int argc, char* argv[])
 					api_type = API_DIGILENT;
 				else if(sapi == "ftdi")
 					api_type = API_FTDI;
+				else if(sapi == "ftdi-libftdi")
+					api_type = API_FTDIFREE;
 				else if(sapi == "pipe")
 					api_type = API_PIPE;
 				else
@@ -179,6 +182,15 @@ int main(int argc, char* argv[])
 					iface = new FTDIJtagInterface(adapter_serial);
 				#else
 					LogError("This jtagd was compiled without libftd2xx support\n");
+					return 1;
+				#endif
+				break;
+
+			case API_FTDIFREE:
+				#ifdef HAVE_LIBFTDI
+					iface = new FTDIFreeJtagInterface(adapter_serial);
+				#else
+					LogError("This jtagd was compiled without libftdi support\n");
 					return 1;
 				#endif
 				break;
@@ -338,7 +350,7 @@ void ShowUsage()
 		"Usage: jtagd [OPTION]\n"
 		"\n"
 		"Arguments:\n"
-		"    --api digilent|ftdi                              Specifies whether to use the Digilent or FTDI API for connecting to the\n"
+		"    --api digilent|ftdi|ftdi-libftdi                 Specifies whether to use the Digilent or FTDI API for connecting to the\n"
 		"                                                       JTAG adapter. This argument is mandatory.\n"
 		"    --help                                           Displays this message and exits.\n"
 		"    --list                                           Prints a listing of connected adapters and exits.\n"
@@ -372,7 +384,7 @@ void ListAdapters()
 		ShowVersion();
 
 		//disable compiler warning if no APIs are found
-		#if( defined(HAVE_DJTG) || defined(HAVE_FTD2XX) )
+		#if( defined(HAVE_DJTG) || defined(HAVE_FTD2XX) || defined(HAVE_LIBFTDI) )
 			string ver;
 			int ndev = 0;
 		#endif
@@ -442,6 +454,42 @@ void ListAdapters()
 			}
 		#else	//#ifdef HAVE_FTD2XX
 			LogNotice("FTDI API version: not supported\n");
+		#endif
+
+		printf("\n");
+		#ifdef HAVE_LIBFTDI
+			ver = FTDIFreeJtagInterface::GetAPIVersion();
+			LogNotice("libftdi API version: %s\n", ver.c_str());
+			ndev = FTDIFreeJtagInterface::GetInterfaceCount();
+			LogNotice("    Enumerating interfaces... %d found\n", ndev);
+			if(ndev == 0)
+				LogNotice("No interfaces found\n");
+			else
+			{
+				int idev = 0;
+				LogIndenter li;
+				for(int i=0; i<ndev; i++)
+				{
+					try
+					{
+						if(FTDIFreeJtagInterface::IsJtagCapable(i))
+						{
+							LogNotice("Interface %d: %s\n", idev, FTDIFreeJtagInterface::GetDescription(i).c_str());
+							LogIndenter li;
+							LogNotice("Serial number:  %s\n", FTDIFreeJtagInterface::GetSerialNumber(i).c_str());
+							LogNotice("User ID:        %s\n", FTDIFreeJtagInterface::GetSerialNumber(i).c_str());
+							LogNotice("Default clock:  %.2f MHz\n", FTDIFreeJtagInterface::GetDefaultFrequency(i)/1000000.0f);
+							idev++;
+						}
+					}
+					catch(const JtagException& e)
+					{
+						LogNotice("Interface %d: Error getting device information\n", i);
+					}
+				}
+			}
+		#else	//#ifdef HAVE_LIBFTDI
+			LogNotice("libftdi API version: not supported\n");
 		#endif
 	}
 
