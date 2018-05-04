@@ -36,7 +36,7 @@ jtagd:
         - ConnectionThread.cpp
 
     constants:
-        ../jtaghal/jtagd_opcodes.yml:
+        ../../jtaghal/jtagd_opcodes.yml:
             - c/enum
 
     flags:

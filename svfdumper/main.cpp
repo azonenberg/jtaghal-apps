@@ -39,7 +39,7 @@
 #include <string>
 #include <list>
 
-#include "../../../lib/jtaghal/jtaghal.h"
+#include "../../jtaghal/jtaghal.h"
 #include <signal.h>
 
 using namespace std;
