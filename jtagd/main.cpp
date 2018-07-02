@@ -59,6 +59,7 @@ int main(int argc, char* argv[])
 			API_UNSPECIFIED
 		} api_type = API_UNSPECIFIED;
 		string adapter_serial = "";
+		string ftdi_layout = "";
 		unsigned short port = 0;		//random default port
 
 		Severity console_verbosity = Severity::NOTICE;
@@ -129,6 +130,17 @@ int main(int argc, char* argv[])
 
 				adapter_serial = argv[++i];
 			}
+			else if(s == "--ftdi_layout")
+			{
+				if(i+1 >= argc)
+				{
+					throw JtagExceptionWrapper(
+						"Not enough arguments",
+						"");
+				}
+
+				ftdi_layout = argv[++i];
+			}
 			else if(s == "--version")
 				op = OP_VERSION;
 			else
@@ -176,7 +188,12 @@ int main(int argc, char* argv[])
 		{
 			case API_FTDI:
 				#ifdef HAVE_FTD2XX
-					iface = new FTDIJtagInterface(adapter_serial);
+					if(ftdi_layout == "")
+					{
+						LogError("--ftdi_layout must be specified if using --api ftdi\n");
+						return 1;
+					}
+					iface = new FTDIJtagInterface(adapter_serial, ftdi_layout);
 				#else
 					LogError("This jtagd was compiled without libftd2xx support\n");
 					return 1;
@@ -340,6 +357,9 @@ void ShowUsage()
 		"Arguments:\n"
 		"    --api digilent|ftdi                              Specifies whether to use the Digilent or FTDI API for connecting to the\n"
 		"                                                       JTAG adapter. This argument is mandatory.\n"
+		"    --ftdi_layout LAYOUT                             Specifies the FTDI adapter configuration to use. This argument is mandatory\n"
+		"                                                       if --api ftdi is specified.\n"
+		"                                                     Legal values: busblaster, hs1\n"
 		"    --help                                           Displays this message and exits.\n"
 		"    --list                                           Prints a listing of connected adapters and exits.\n"
 		"    --port PORT                                      Specifies the port number the daemon should listen on.\n"
