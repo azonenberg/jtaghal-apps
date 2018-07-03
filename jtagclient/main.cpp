@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
 		}
 
 		//Get device count and see what we've found
-		LogVerbose("Scan chain contains %d devices\n", (int)iface.GetDeviceCount());
+		LogNotice("Scan chain contains %d devices\n", (int)iface.GetDeviceCount());
 
 		//Walk the chain and see what we find
 		//No need for mutexing here since the device will lock the high-level interface when necessary
