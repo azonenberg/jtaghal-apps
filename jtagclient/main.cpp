@@ -144,6 +144,7 @@ int main(int argc, char* argv[])
 		bool raw = false;
 		bool profile_init_time = false;
 		string indirect_image = "";
+		bool nobanner = false;
 
 		//Parse command-line arguments
 		for(int i=1; i<argc; i++)
@@ -223,6 +224,8 @@ int main(int argc, char* argv[])
 			}
 			else if(s == "--profile-init")
 				profile_init_time = true;
+			else if(s == "--nobanner")
+				nobanner = true;
 			else if(s == "--info")
 			{
 				if(i+1 >= argc)
@@ -286,7 +289,7 @@ int main(int argc, char* argv[])
 		g_log_sinks.emplace(g_log_sinks.begin(), new ColoredSTDLogSink(console_verbosity));
 
 		//Print header
-		if(console_verbosity >= Severity::NOTICE)
+		if(!nobanner)
 		{
 			ShowVersion();
 			printf("\n");
@@ -311,23 +314,25 @@ int main(int argc, char* argv[])
 		//Connect to the server
 		NetworkedJtagInterface iface;
 		iface.Connect(server, port);
-		printf("Connected to JTAG daemon at %s:%d\n", server.c_str(), port);
-		printf("Querying adapter...\n");
-		printf("    Remote JTAG adapter is a %s (serial number \"%s\", userid \"%s\", frequency %.2f MHz)\n",
-			iface.GetName().c_str(), iface.GetSerial().c_str(), iface.GetUserID().c_str(), iface.GetFrequency()/1E6);
+		if(!nobanner)
+		{
+			LogNotice("Connected to JTAG daemon at %s:%d\n", server.c_str(), port);
+			LogVerbose("    Remote JTAG adapter is a %s (serial number \"%s\", userid \"%s\", frequency %.2f MHz)\n",
+				iface.GetName().c_str(), iface.GetSerial().c_str(), iface.GetUserID().c_str(), iface.GetFrequency()/1E6);
+		}
 
 		//Initialize the chain
-		printf("Initializing chain...\n");
+		LogVerbose("Initializing chain...\n");
 		double start = GetTime();
 		iface.InitializeChain();
 		if(profile_init_time)
 		{
 			double dt = GetTime() - start;
-			printf("    Chain walking took %.3f ms\n", dt*1000);
+			LogDebug("    Chain walking took %.3f ms\n", dt*1000);
 		}
 
 		//Get device count and see what we've found
-		printf("Scan chain contains %d devices\n", (int)iface.GetDeviceCount());
+		LogVerbose("Scan chain contains %d devices\n", (int)iface.GetDeviceCount());
 
 		//Walk the chain and see what we find
 		//No need for mutexing here since the device will lock the high-level interface when necessary
