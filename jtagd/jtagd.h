@@ -45,13 +45,13 @@
 #include <signal.h>
 #include <pthread.h>
 
-#include "../../log/log.h"
-#include "../../xptools/Socket.h"
+#include "../../lib/log/log.h"
+#include "../../lib/xptools/Socket.h"
 
 //TODO: generate git version string somehow?
 //#include <svnversion.h>
 
-#include "../../jtaghal/jtaghal.h"
+#include "../../lib/jtaghal/jtaghal.h"
 #include "jtagd_opcodes_enum.h"
 
 void ProcessConnection(JtagInterface* iface, Socket& client);

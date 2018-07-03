@@ -41,7 +41,7 @@
 #include <string>
 #include <list>
 
-#include "../../jtaghal/jtaghal.h"
+#include "../../lib/jtaghal/jtaghal.h"
 //#include <svnversion.h>
 
 #include <signal.h>
