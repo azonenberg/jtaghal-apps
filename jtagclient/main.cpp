@@ -129,7 +129,8 @@ int main(int argc, char* argv[])
 			MODE_DEVINFO,
 			MODE_ERASE,
 			MODE_REBOOT,
-			MODE_DUMP
+			MODE_DUMP,
+			MODE_LOCK
 		} mode = MODE_NONE;
 
 		//Device index
@@ -188,6 +189,18 @@ int main(int argc, char* argv[])
 				}
 				devnum = atoi(argv[++i]);
 				bitfile = argv[++i];
+			}
+			else if(s == "--lock")
+			{
+				if(i+1 >= argc)
+				{
+					fprintf(stderr, "Not enough arguments for --lock\n");
+					return 1;
+				}
+
+				//Expect device index
+				mode = MODE_LOCK;
+				devnum = atoi(argv[++i]);
 			}
 			else if(s == "--dump")
 			{
@@ -483,10 +496,35 @@ int main(int argc, char* argv[])
 					}
 
 					//Erase it
-					printf("Rebooting...\n");
+					LogNotice("Rebooting...\n");
 					pdev->Reboot();
 				}
 				break;
+
+			case MODE_LOCK:
+				{
+					//Get the device
+					JtagDevice* device = iface.GetDevice(devnum);
+					if(device == NULL)
+					{
+						throw JtagExceptionWrapper(
+							"Device is null, cannot continue",
+							"");
+					}
+
+					//Make sure it's a lockable device
+					LockableDevice* pdev = dynamic_cast<LockableDevice*>(device);
+					if(pdev == NULL)
+					{
+						throw JtagExceptionWrapper(
+							"Device is not lockable, cannot continue",
+							"");
+					}
+
+					//Lock it
+					LogNotice("Locking...\n");
+					pdev->SetReadLock();
+				};
 
 			default:
 				break;
