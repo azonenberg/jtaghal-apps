@@ -130,7 +130,8 @@ int main(int argc, char* argv[])
 			MODE_ERASE,
 			MODE_REBOOT,
 			MODE_DUMP,
-			MODE_LOCK
+			MODE_LOCK,
+			MODE_UNLOCK
 		} mode = MODE_NONE;
 
 		//Device index
@@ -200,6 +201,18 @@ int main(int argc, char* argv[])
 
 				//Expect device index
 				mode = MODE_LOCK;
+				devnum = atoi(argv[++i]);
+			}
+			else if(s == "--unlock")
+			{
+				if(i+1 >= argc)
+				{
+					fprintf(stderr, "Not enough arguments for --lock\n");
+					return 1;
+				}
+
+				//Expect device index
+				mode = MODE_UNLOCK;
 				devnum = atoi(argv[++i]);
 			}
 			else if(s == "--dump")
@@ -524,6 +537,31 @@ int main(int argc, char* argv[])
 					//Lock it
 					LogNotice("Locking...\n");
 					pdev->SetReadLock();
+				};
+
+			case MODE_UNLOCK:
+				{
+					//Get the device
+					JtagDevice* device = iface.GetDevice(devnum);
+					if(device == NULL)
+					{
+						throw JtagExceptionWrapper(
+							"Device is null, cannot continue",
+							"");
+					}
+
+					//Make sure it's a lockable device
+					LockableDevice* pdev = dynamic_cast<LockableDevice*>(device);
+					if(pdev == NULL)
+					{
+						throw JtagExceptionWrapper(
+							"Device is not lockable, cannot continue",
+							"");
+					}
+
+					//Lock it
+					LogNotice("Unlocking (will probably trigger bulk flash erase)...\n");
+					pdev->ClearReadLock();
 				};
 
 			default:
