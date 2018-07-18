@@ -359,7 +359,7 @@ void ShowUsage()
 		"                                                       JTAG adapter. This argument is mandatory.\n"
 		"    --ftdi_layout LAYOUT                             Specifies the FTDI adapter configuration to use. This argument is mandatory\n"
 		"                                                       if --api ftdi is specified.\n"
-		"                                                     Legal values: busblaster, hs1\n"
+		"                                                     Legal values: jtagkey, hs1\n"
 		"    --help                                           Displays this message and exits.\n"
 		"    --list                                           Prints a listing of connected adapters and exits.\n"
 		"    --port PORT                                      Specifies the port number the daemon should listen on.\n"
