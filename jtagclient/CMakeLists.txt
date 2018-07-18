@@ -2,8 +2,8 @@
 
 set(JTAGCLIENT_SOURCES main.cpp)
 
-add_executable(jtagclient 
+add_executable(jtagclient
 	${JTAGCLIENT_SOURCES})
-target_link_libraries(jtagclient jtaghal)
+target_link_libraries(jtagclient jtaghal asan)
 install(TARGETS jtagclient RUNTIME DESTINATION /usr/bin)
 
