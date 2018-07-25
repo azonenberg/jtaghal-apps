@@ -1,9 +1,8 @@
 # CMake build script for jtagsh.
 
-set(JTAGCLIENT_SOURCES main.cpp)
-
 add_executable(jtagsh
-	${JTAGCLIENT_SOURCES})
-target_link_libraries(jtagsh jtaghal asan editline)
+	main.cpp
+	commands.cpp)
+target_link_libraries(jtagsh jtaghal asan edit)
 install(TARGETS jtagsh RUNTIME DESTINATION /usr/bin)
 
