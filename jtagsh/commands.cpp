@@ -370,7 +370,7 @@ void OnDebugCommand(DebuggableDevice* pdev, const string& cmd, const vector<stri
 	else if(cmd == "regs")
 		pdev->PrintRegisters();
 
-	//Read memory from the default RAM Mem-AP (generally AHB bus but might be AXI)
+	//Read memory from the default RAM source (generally AHB or AXI bus on ARM targets)
 	else if(cmd == "readmem")
 	{
 		if(args.size() != 2)
@@ -383,7 +383,25 @@ void OnDebugCommand(DebuggableDevice* pdev, const string& cmd, const vector<stri
 		sscanf(args[1].c_str(), "%x", &addr);
 
 		uint32_t value = pdev->ReadMemory(addr);
-		LogNotice("*0x%08x = %08x\n", addr, value);
+		LogNotice("*0x%08x = 0x%08x\n", addr, value);
+	}
+
+	//Write memory to the default destination
+	else if(cmd == "writemem")
+	{
+		if(args.size() != 3)
+		{
+			LogError("Usage: writemem [hex address] [hex data]\n");
+			return;
+		}
+
+		uint32_t addr;
+		sscanf(args[1].c_str(), "%x", &addr);
+
+		uint32_t value;
+		sscanf(args[2].c_str(), "%x", &value);
+
+		pdev->WriteMemory(addr, value);
 	}
 
 	else
