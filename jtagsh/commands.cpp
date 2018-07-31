@@ -252,6 +252,13 @@ void TargetShell(DebuggableDevice* pdev)
 			else if(args[0].find("debug-") == 0)
 				OnDebugCommand(pdev, args[0].substr(6), args);
 
+			else if(args[0] == "info")
+			{
+				auto papb = dynamic_cast<ARMAPBDevice*>(pdev);
+				if(papb)
+					papb->PrintInfo();
+			}
+
 			else
 			{
 				LogNotice("Unrecognized command\n");
@@ -349,7 +356,9 @@ void OnTarget(DebuggerInterface* iface, const vector<string>& args)
 	}
 
 	//Run the interactive shell
-	TargetShell(iface->GetTarget(tnum));
+	auto ptarget = iface->GetTarget(tnum);
+	LogNotice("Selected target %u: %s\n", tnum, ptarget->GetDescription().c_str());
+	TargetShell(ptarget);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -369,6 +378,69 @@ void OnDebugCommand(DebuggableDevice* pdev, const string& cmd, const vector<stri
 		pdev->DebugResume();
 	else if(cmd == "regs")
 		pdev->PrintRegisters();
+
+	else if(cmd == "fpb")
+	{
+		if(args.size() < 2)
+		{
+			LogError("Usage: debug-fpb [command]\n");
+			return;
+		}
+
+		auto cpu = dynamic_cast<ARMv7MProcessor*>(pdev);
+		if(cpu)
+		{
+			auto fpb = cpu->GetFlashPatchBreakpoint();
+			if(fpb)
+				OnDebugFPBCommand(fpb, args[1], args);
+			else
+				LogError("debug-fpb requires a CPU with a Flash Patch/Breakpoint unit\n");
+		}
+		else
+			LogError("debug-fpb requires an ARMv7-M target\n");
+	}
+
+	//Dump memory to a file
+	else if(cmd == "dumpmem")
+	{
+		if(args.size() != 4)
+		{
+			LogError("Usage: dumpmem [hex base address] [hex length] [filename]\n");
+			return;
+		}
+
+		uint32_t addr;
+		sscanf(args[1].c_str(), "%x", &addr);
+
+		uint32_t len;
+		sscanf(args[2].c_str(), "%x", &len);
+
+		string fname = args[3];
+
+		FILE* fp = fopen(fname.c_str(), "wb");
+		if(!fp)
+		{
+			LogError("couldn't open file\n");
+			return;
+		}
+
+		LogIndenter li;
+		for(uint32_t off=0; off<len; off += 4)
+		{
+			uint32_t ptr = addr + off;
+
+			if( (ptr & 0xfff) == 0)
+				LogNotice("%08x\n", ptr);
+
+			uint32_t value = pdev->ReadMemory(ptr);
+			if(1 != fwrite(&value, 4, 1, fp))
+			{
+				LogError("couldn't write file\n");
+				return;
+			}
+		}
+		fclose(fp);
+	}
 
 	//Read memory from the default RAM source (generally AHB or AXI bus on ARM targets)
 	else if(cmd == "readmem")
@@ -407,6 +479,75 @@ void OnDebugCommand(DebuggableDevice* pdev, const string& cmd, const vector<stri
 	else
 		LogNotice("Unrecognized command\n");
 }
+
+void OnDebugFPBCommand(ARMFlashPatchBreakpoint* pdev, const string& cmd, const vector<string>& args)
+{
+	//Turn the FPB on/off
+	if(cmd == "enable")
+		pdev->Enable();
+	else if(cmd == "disable")
+		pdev->Disable();
+
+	//Print debug info
+	else if(cmd == "info")
+		pdev->PrintInfo();
+
+	//Set the base address of the remapping table
+	else if(cmd == "setbase")
+	{
+		if(args.size() != 3)
+		{
+			LogError("Usage: debug-fpb setbase [hex address]\n");
+			return;
+		}
+
+		uint32_t addr;
+		sscanf(args[2].c_str(), "%x", &addr);
+
+		pdev->SetRemapTableBase(addr);
+	}
+
+	//Write to the remapping table
+	else if(cmd == "remap")
+	{
+		if(args.size() != 5)
+		{
+			LogError("Usage: debug-fpb remap [slot] [hex flash address] [new hex opcode]\n");
+			return;
+		}
+
+		uint32_t slot;
+		sscanf(args[2].c_str(), "%d", &slot);
+
+		uint32_t addr;
+		sscanf(args[3].c_str(), "%x", &addr);
+
+		uint32_t opcode;
+		sscanf(args[4].c_str(), "%x", &opcode);
+
+		pdev->RemapFlashWord(slot, addr, opcode);
+	}
+
+	else
+		LogNotice("Unrecognized command\n");
+}
+
+void OnTargets(DebuggerInterface* iface)
+{
+	if(iface == NULL)
+	{
+		LogError("The \"targets\" command can only be used on a debugger interface\n");
+		return;
+	}
+
+	LogNotice("%10s %-50s\n", "Index", "Description");
+	for(size_t i=0; i<iface->GetNumTargets(); i++)
+	{
+		auto target = iface->GetTarget(i);
+		LogNotice("%10zu %-50s\n", i, target->GetDescription().c_str() );
+	}
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vendor commands
@@ -496,17 +637,4 @@ void OnXilinxCommand(XilinxFPGA* pdev, const string& cmd, const vector<string>& 
 	else
 		LogNotice("Unrecognized command\n");
 
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Vendor commands
-
-void OnTargets(DebuggerInterface* iface)
-{
-	LogNotice("%10s %-50s\n", "Index", "Description");
-	for(size_t i=0; i<iface->GetNumTargets(); i++)
-	{
-		auto target = iface->GetTarget(i);
-		LogNotice("%10zu %-50s\n", i, target->GetDescription().c_str() );
-	}
 }

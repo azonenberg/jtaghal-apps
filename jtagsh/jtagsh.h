@@ -59,6 +59,7 @@ void OnTargets(DebuggerInterface* iface);
 
 void OnARMCommand(ARMDebugPort* pdev, const std::string& cmd, const std::vector<std::string>& args);
 void OnDebugCommand(DebuggableDevice* pdev, const std::string& cmd, const std::vector<std::string>& args);
+void OnDebugFPBCommand(ARMFlashPatchBreakpoint* pdev, const std::string& cmd, const std::vector<std::string>& args);
 void OnXilinxCommand(XilinxFPGA* pdev, const std::string& cmd, const std::vector<std::string>& args);
 
 #endif
