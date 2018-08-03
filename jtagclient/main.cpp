@@ -417,6 +417,8 @@ int main(int argc, char* argv[])
 					}
 					else
 					{
+						LogError("Indirect programming not supported\n");
+						/*
 						LogNotice("Programming device (using indirect programming, bus width %d)...\n", indirect_width);
 						ByteArrayFirmwareImage* bi = dynamic_cast<ByteArrayFirmwareImage*>(img);
 						if(bi)
@@ -427,6 +429,7 @@ int main(int argc, char* argv[])
 								"Cannot indirectly program non-byte-array firmware images",
 								"");
 						}
+						*/
 					}
 					LogNotice("Configuration successful\n");
 					delete img;
@@ -435,6 +438,7 @@ int main(int argc, char* argv[])
 
 			case MODE_DUMP:
 				{
+					/*
 					//Get the device
 					JtagDevice* device = iface.GetDevice(devnum);
 					if(device == NULL)
@@ -455,6 +459,11 @@ int main(int argc, char* argv[])
 
 					LogNotice("Dumping flash...\n");
 					pdev->DumpIndirect(indirect_width, bitfile);
+					*/
+
+					throw JtagExceptionWrapper(
+						"Dump not supported",
+						"");
 				}
 				break;
 
