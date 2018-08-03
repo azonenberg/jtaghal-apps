@@ -67,7 +67,9 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 		if( (scmd == "exit") || (scmd == "quit") )
 			return;
 		else if(scmd == "autodetect")
-			OnAutodetect(iface);
+			OnAutodetect(iface, false);
+		else if(scmd == "autodetect quiet")
+			OnAutodetect(iface, true);
 
 		//Select a new device and run the shell for it
 		else if(scmd.find("select") == 0)
@@ -165,10 +167,60 @@ void DeviceShell(JtagDevice* pdev)
 			else if(args[0] == "targets")
 				OnTargets(dynamic_cast<DebuggerInterface*>(pdev));
 
+			else if(args[0] == "lock")
+			{
+				auto plock = dynamic_cast<LockableDevice*>(pdev);
+				if(plock)
+				{
+					LogNotice("Setting reversible read protection... (power cycle or reset may be needed to take effect)\n");
+					plock->SetReadLock();
+				}
+				else
+				{
+					LogError("This device does not have any supported read protection mechanism\n");
+					continue;
+				}
+			}
+
+			else if(args[0] == "unlock")
+			{
+				auto plock = dynamic_cast<LockableDevice*>(pdev);
+				if(plock)
+				{
+					LogNotice("Clearing read protection... (will trigger bulk erase in most parts)\n");
+					plock->ClearReadLock();
+				}
+				else
+				{
+					LogError("This device does not have any supported read protection mechanism\n");
+					continue;
+				}
+			}
+
+			else if(args[0] == "erase")
+			{
+				auto pprog = dynamic_cast<ProgrammableDevice*>(pdev);
+				if(pprog)
+				{
+					LogNotice("Bulk erasing device...\n");
+					pprog->Erase();
+				}
+				else
+				{
+					LogError("This device is not programmable\n");
+					continue;
+				}
+			}
+
 			//Do stuff that takes arguments
 			else if(args[0] == "select")
 			{
 				OnTarget(dynamic_cast<DebuggerInterface*>(pdev), args);
+				continue;
+			}
+			else if(args[0] == "program")
+			{
+				OnProgram(dynamic_cast<ProgrammableDevice*>(pdev), args);
 				continue;
 			}
 
@@ -279,10 +331,10 @@ void TargetShell(DebuggableDevice* pdev)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Generic commands
 
-void OnAutodetect(NetworkedJtagInterface& iface)
+void OnAutodetect(NetworkedJtagInterface& iface, bool quiet)
 {
 	//Figure out what devices we have
-	iface.InitializeChain();
+	iface.InitializeChain(quiet);
 
 	//Print out a list of what we found
 	LogNotice("%10s %7s %10s  %-60s %-50s\n", "Index", "IR len", "ID code", "Description", "Device capabilities");
@@ -359,6 +411,32 @@ void OnTarget(DebuggerInterface* iface, const vector<string>& args)
 	auto ptarget = iface->GetTarget(tnum);
 	LogNotice("Selected target %u: %s\n", tnum, ptarget->GetDescription().c_str());
 	TargetShell(ptarget);
+}
+
+void OnProgram(ProgrammableDevice* pdev, const vector<string>& args)
+{
+	//Sanity checks
+	if(pdev == NULL)
+	{
+		LogError("The \"program\" command can only be used on a programmable device\n");
+		return;
+	}
+	if(args.size() != 2)
+	{
+		LogError("Usage: program [file name]\n");
+		return;
+	}
+
+	//Load the firmware
+	auto img = pdev->LoadFirmwareImage(args[1]);
+	if(!img)
+	{
+		LogError("Failed to load firmware image\n");
+		return;
+	}
+
+	//Flash it
+	pdev->Program(img);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

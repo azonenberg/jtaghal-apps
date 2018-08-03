@@ -53,8 +53,9 @@ void TopLevelShell(NetworkedJtagInterface& iface);
 void DeviceShell(JtagDevice* pdev);
 void TargetShell(DebuggableDevice* pdev);
 
-void OnAutodetect(NetworkedJtagInterface& iface);
+void OnAutodetect(NetworkedJtagInterface& iface, bool quiet);
 void OnTarget(DebuggerInterface* iface, const std::vector<std::string>& args);
+void OnProgram(ProgrammableDevice* pdev, const std::vector<std::string>& args);
 void OnTargets(DebuggerInterface* iface);
 
 void OnARMCommand(ARMDebugPort* pdev, const std::string& cmd, const std::vector<std::string>& args);
