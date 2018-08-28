@@ -305,7 +305,6 @@ int main(int argc, char* argv[])
 
 		//Print interface statistics
 		LogNotice("Total number of shift operations:       %zu\n", iface->GetShiftOpCount());
-		LogNotice("Total number of recoverable errors:     %zu\n", iface->GetRecoverableErrorCount());
 		LogNotice("Total number of data bits:              %zu\n", iface->GetDataBitCount());
 		LogNotice("Total number of mode bits:              %zu\n", iface->GetModeBitCount());
 		LogNotice("Total number of dummy clocks:           %zu\n", iface->GetDummyClockCount());
@@ -444,7 +443,7 @@ void ListAdapters()
 				{
 					try
 					{
-						if(FTDIJtagInterface::IsJtagCapable(i))
+						if(FTDIJtagInterface::IsMPSSECapable(i))
 						{
 							LogNotice("Interface %d: %s\n", idev, FTDIJtagInterface::GetDescription(i).c_str());
 							LogIndenter li;

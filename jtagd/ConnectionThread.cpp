@@ -291,13 +291,6 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 					}
 					break;
 
-				case JTAGD_OP_PERF_RECOV:
-					{
-						uint64_t n = iface->GetRecoverableErrorCount();
-						client.SendLooped((unsigned char*)&n, 8);
-					}
-					break;
-
 				case JTAGD_OP_PERF_DATA:
 					{
 						uint64_t n = iface->GetDataBitCount();
