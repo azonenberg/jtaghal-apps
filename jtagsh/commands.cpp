@@ -53,7 +53,7 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 		fflush(stderr);
 
 		//Get the command
-		char* cmd = readline("jtag-chain> ");
+		char* cmd = readline("jtag> ");
 		if(cmd == NULL)
 			return;
 		add_history(cmd);
@@ -70,6 +70,8 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 			OnAutodetect(iface, false);
 		else if(scmd == "autodetect quiet")
 			OnAutodetect(iface, true);
+		else if(scmd == "ls")
+			OnTargets(iface);
 
 		//Select a new device and run the shell for it
 		else if(scmd.find("select") == 0)
@@ -113,10 +115,14 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 	}
 }
 
-void DeviceShell(JtagDevice* pdev)
+void DeviceShell(TestableDevice* pdev)
 {
 	char prompt[32];
-	snprintf(prompt, sizeof(prompt), "jtag-device%zu> ", pdev->GetChainIndex());
+	size_t index = 0;
+	JtagDevice* pj = dynamic_cast<JtagDevice*>(pdev);
+	if(pj)
+		index = pj->GetChainIndex();
+	snprintf(prompt, sizeof(prompt), "jtag/device%zu> ", index);
 
 	while(true)
 	{
@@ -164,7 +170,7 @@ void DeviceShell(JtagDevice* pdev)
 				return;
 			else if(args[0] == "info")
 				pdev->PrintInfo();
-			else if(args[0] == "targets")
+			else if(args[0] == "ls")
 				OnTargets(dynamic_cast<DebuggerInterface*>(pdev));
 
 			else if(args[0] == "lock")
@@ -215,7 +221,7 @@ void DeviceShell(JtagDevice* pdev)
 			//Do stuff that takes arguments
 			else if(args[0] == "select")
 			{
-				OnTarget(dynamic_cast<DebuggerInterface*>(pdev), args);
+				OnTarget(dynamic_cast<DebuggerInterface*>(pdev), args, index);
 				continue;
 			}
 			else if(args[0] == "program")
@@ -247,13 +253,16 @@ void DeviceShell(JtagDevice* pdev)
 	}
 }
 
-void TargetShell(DebuggableDevice* pdev)
+void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget)
 {
 	if(pdev == NULL)
 	{
 		LogError("The \"target\" shell requires a debuggable device\n");
 		return;
 	}
+
+	char prompt[64];
+	snprintf(prompt, sizeof(prompt), "jtag/device%u/target%u> ", ndev, ntarget);
 
 	while(true)
 	{
@@ -262,7 +271,7 @@ void TargetShell(DebuggableDevice* pdev)
 		fflush(stderr);
 
 		//Get the command
-		char* cmd = readline("debug-target> ");
+		char* cmd = readline(prompt);
 		if(cmd == NULL)
 			return;
 		add_history(cmd);
@@ -335,12 +344,17 @@ void OnAutodetect(NetworkedJtagInterface& iface, bool quiet)
 {
 	//Figure out what devices we have
 	iface.InitializeChain(quiet);
+}
+
+void OnTargets(NetworkedJtagInterface& iface)
+{
+	//TODO: how to handle non-JTAG interfaces?
 
 	//Print out a list of what we found
 	LogNotice("%10s %7s %10s  %-60s %-50s\n", "Index", "IR len", "ID code", "Description", "Device capabilities");
 	for(size_t i=0; i<iface.GetDeviceCount(); i++)
 	{
-		auto pdev = iface.GetDevice(i);
+		auto pdev = iface.GetJtagDevice(i);
 
 		//Figure out what this device is
 		vector<string> alist;
@@ -380,7 +394,7 @@ void OnAutodetect(NetworkedJtagInterface& iface, bool quiet)
 	LogNotice("\nNOTE: Capabilities listed are based on ID code scan only, and may be restricted by device security bits.\n");
 }
 
-void OnTarget(DebuggerInterface* iface, const vector<string>& args)
+void OnTarget(DebuggerInterface* iface, const vector<string>& args, unsigned int ndev)
 {
 	//Sanity checks
 	if(iface == NULL)
@@ -410,7 +424,7 @@ void OnTarget(DebuggerInterface* iface, const vector<string>& args)
 	//Run the interactive shell
 	auto ptarget = iface->GetTarget(tnum);
 	LogNotice("Selected target %u: %s\n", tnum, ptarget->GetDescription().c_str());
-	TargetShell(ptarget);
+	TargetShell(ptarget, ndev, tnum);
 }
 
 void OnProgram(ProgrammableDevice* pdev, const vector<string>& args)

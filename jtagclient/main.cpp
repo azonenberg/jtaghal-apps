@@ -50,7 +50,7 @@ using namespace std;
 
 void ShowUsage();
 void ShowVersion();
-void PrintDeviceInfo(JtagDevice* pdev);
+void PrintDeviceInfo(TestableDevice* pdev);
 
 #ifndef _WIN32
 void sig_handler(int sig);
@@ -385,7 +385,7 @@ int main(int argc, char* argv[])
 					}
 
 					//Get the device
-					JtagDevice* device = iface.GetDevice(devnum);
+					auto device = iface.GetDevice(devnum);
 					if(device == NULL)
 					{
 						throw JtagExceptionWrapper(
@@ -474,7 +474,7 @@ int main(int argc, char* argv[])
 			case MODE_ERASE:
 				{
 					//Get the device
-					JtagDevice* device = iface.GetDevice(devnum);
+					auto device = iface.GetDevice(devnum);
 					if(device == NULL)
 					{
 						throw JtagExceptionWrapper(
@@ -500,7 +500,7 @@ int main(int argc, char* argv[])
 			case MODE_REBOOT:
 				{
 					//Get the device
-					JtagDevice* device = iface.GetDevice(devnum);
+					auto device = iface.GetDevice(devnum);
 					if(device == NULL)
 					{
 						throw JtagExceptionWrapper(
@@ -526,7 +526,7 @@ int main(int argc, char* argv[])
 			case MODE_LOCK:
 				{
 					//Get the device
-					JtagDevice* device = iface.GetDevice(devnum);
+					auto device = iface.GetDevice(devnum);
 					if(device == NULL)
 					{
 						throw JtagExceptionWrapper(
@@ -551,7 +551,7 @@ int main(int argc, char* argv[])
 			case MODE_UNLOCK:
 				{
 					//Get the device
-					JtagDevice* device = iface.GetDevice(devnum);
+					auto device = iface.GetDevice(devnum);
 					if(device == NULL)
 					{
 						throw JtagExceptionWrapper(
@@ -596,7 +596,7 @@ int main(int argc, char* argv[])
 
 	\ingroup jtagclient
  */
-void PrintDeviceInfo(JtagDevice* pdev)
+void PrintDeviceInfo(TestableDevice* pdev)
 {
 	if(pdev == NULL)
 	{

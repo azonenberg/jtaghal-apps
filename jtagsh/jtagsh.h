@@ -50,11 +50,12 @@
 #include <signal.h>
 
 void TopLevelShell(NetworkedJtagInterface& iface);
-void DeviceShell(JtagDevice* pdev);
-void TargetShell(DebuggableDevice* pdev);
+void DeviceShell(TestableDevice* pdev);
+void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget);
 
 void OnAutodetect(NetworkedJtagInterface& iface, bool quiet);
-void OnTarget(DebuggerInterface* iface, const std::vector<std::string>& args);
+void OnTargets(NetworkedJtagInterface& iface);
+void OnTarget(DebuggerInterface* iface, const std::vector<std::string>& args, unsigned int ndev);
 void OnProgram(ProgrammableDevice* pdev, const std::vector<std::string>& args);
 void OnTargets(DebuggerInterface* iface);
 
