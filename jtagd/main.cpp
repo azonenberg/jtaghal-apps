@@ -56,11 +56,18 @@ int main(int argc, char* argv[])
 			API_DIGILENT,
 			API_FTDI,
 			API_PIPE,
+			API_GLASGOW,
 			API_UNSPECIFIED
 		} api_type = API_UNSPECIFIED;
 		string adapter_serial = "";
 		string ftdi_layout = "";
 		unsigned short port = 0;		//random default port
+
+		enum transports
+		{
+			TRANSPORT_JTAG,
+			TRANSPORT_SWD
+		} transport_type = TRANSPORT_JTAG;
 
 		Severity console_verbosity = Severity::NOTICE;
 
@@ -101,6 +108,26 @@ int main(int argc, char* argv[])
 				else
 				{
 					printf("Unrecognized interface API \"%s\", use --help\n", sapi.c_str());
+					return 1;
+				}
+			}
+			else if(s == "--transport")
+			{
+				if(i+1 >= argc)
+				{
+					throw JtagExceptionWrapper(
+						"Not enough arguments",
+						"");
+				}
+
+				string st = argv[++i];
+				if(st == "jtag")
+					transport_type = TRANSPORT_JTAG;
+				else if(st == "swd")
+					transport_type = TRANSPORT_SWD;
+				else
+				{
+					printf("Unrecognized transport \"%s\", use --help\n", st.c_str());
 					return 1;
 				}
 			}
@@ -183,7 +210,7 @@ int main(int argc, char* argv[])
 		}
 
 		//Start up the requested API
-		JtagInterface* iface = NULL;
+		TestInterface* iface = NULL;
 		switch(api_type)
 		{
 			case API_FTDI:
@@ -193,7 +220,16 @@ int main(int argc, char* argv[])
 						LogError("--ftdi_layout must be specified if using --api ftdi\n");
 						return 1;
 					}
-					iface = new FTDIJtagInterface(adapter_serial, ftdi_layout);
+					if(transport_type == TRANSPORT_JTAG)
+						iface = new FTDIJtagInterface(adapter_serial, ftdi_layout);
+					//FTDISWDInterface isn't finished and still has pure virtuals
+					//else if(transport_type == TRANSPORT_SWD)
+					//	iface = new FTDISWDInterface(adapter_serial, ftdi_layout);
+					else
+					{
+						LogError("Unsupported transport for FTDI API (only JTAG/SWD supported\n");
+						return 1;
+					}
 				#else
 					LogError("This jtagd was compiled without libftd2xx support\n");
 					return 1;
@@ -233,7 +269,13 @@ int main(int argc, char* argv[])
 					}
 
 					//Create the interface
-					iface = new DigilentJtagInterface(nif);
+					if(transport_type == TRANSPORT_JTAG)
+						iface = new DigilentJtagInterface(nif);
+					else
+					{
+						LogError("Unsupported transport for FTDI API (only JTAG supported\n");
+						return 1;
+					}
 				}
 				#else	//#ifdef HAVE_DJTG
 					LogError("This jtagd was compiled without Digilent API support\n");
@@ -241,7 +283,27 @@ int main(int argc, char* argv[])
 				break;
 
 			case API_PIPE:
-				iface = new PipeJtagInterface;
+				if(transport_type == TRANSPORT_JTAG)
+					iface = new PipeJtagInterface;
+				else
+				{
+					LogError("Unsupported transport for pipe API (only JTAG supported\n");
+					return 1;
+				}
+				break;
+
+			case API_GLASGOW:
+				#ifdef HAVE_LIBUSB
+					if(transport_type == TRANSPORT_SWD)
+						iface = new GlasgowSWDInterface(adapter_serial);
+					else
+					{
+						LogError("Unsupported transport for Glasgow API (only SWD supported\n");
+						return 1;
+					}
+				#else	//ifdef HAVE_LIBUSB
+					LogError("This jtagd was compiled without libusb support\n");
+				#endif
 				break;
 
 			default:
@@ -304,18 +366,22 @@ int main(int argc, char* argv[])
 		}
 
 		//Print interface statistics
-		LogNotice("Total number of shift operations:       %zu\n", iface->GetShiftOpCount());
-		LogNotice("Total number of data bits:              %zu\n", iface->GetDataBitCount());
-		LogNotice("Total number of mode bits:              %zu\n", iface->GetModeBitCount());
-		LogNotice("Total number of dummy clocks:           %zu\n", iface->GetDummyClockCount());
-		size_t cycles = iface->GetDataBitCount() + iface->GetModeBitCount() + iface->GetDummyClockCount();
-		LogNotice("Total TCK cycles:                       %zu\n", cycles);
-		LogNotice("Total host-side shift time:             %.2f ms\n", iface->GetShiftTime() * 1000);
-		double boardtime = cycles / static_cast<double>(iface->GetFrequency());
-		LogNotice("Calculated board-side shift time:       %.2f ms\n", boardtime * 1000);
-		double latency = iface->GetShiftTime() - boardtime;
-		LogNotice("Calculated total latency:               %.2f ms\n", latency * 1000);
-		LogNotice("Calculated average latency:             %.2f ms\n", (latency * 1000) / iface->GetShiftOpCount());
+		if(transport_type == TRANSPORT_JTAG)
+		{
+			auto jf = dynamic_cast<JtagInterface*>(iface);
+			LogNotice("Total number of shift operations:       %zu\n", jf->GetShiftOpCount());
+			LogNotice("Total number of data bits:              %zu\n", jf->GetDataBitCount());
+			LogNotice("Total number of mode bits:              %zu\n", jf->GetModeBitCount());
+			LogNotice("Total number of dummy clocks:           %zu\n", jf->GetDummyClockCount());
+			size_t cycles = jf->GetDataBitCount() + jf->GetModeBitCount() + jf->GetDummyClockCount();
+			LogNotice("Total TCK cycles:                       %zu\n", cycles);
+			LogNotice("Total host-side shift time:             %.2f ms\n", jf->GetShiftTime() * 1000);
+			double boardtime = cycles / static_cast<double>(jf->GetFrequency());
+			LogNotice("Calculated board-side shift time:       %.2f ms\n", boardtime * 1000);
+			double latency = jf->GetShiftTime() - boardtime;
+			LogNotice("Calculated total latency:               %.2f ms\n", latency * 1000);
+			LogNotice("Calculated average latency:             %.2f ms\n", (latency * 1000) / jf->GetShiftOpCount());
+		}
 
 		//Clean up
 		delete iface;
@@ -354,15 +420,17 @@ void ShowUsage()
 		"Usage: jtagd [OPTION]\n"
 		"\n"
 		"Arguments:\n"
-		"    --api digilent|ftdi                              Specifies whether to use the Digilent or FTDI API for connecting to the\n"
-		"                                                       JTAG adapter. This argument is mandatory.\n"
+		"    --api digilent|ftdi|glasgow|pipe                 Specifies the driver to use for connecting to the debug adapter.\n"
+		"                                                       This argument is mandatory.\n"
 		"    --ftdi_layout LAYOUT                             Specifies the FTDI adapter configuration to use. This argument is mandatory\n"
 		"                                                       if --api ftdi is specified.\n"
 		"                                                     Legal values: jtagkey, hs1\n"
+		"    --transport jtag|swd                             Specifies the protocol the target speaks (JTAG or SWD). Defaults to JTAG.\n"
+		"                                                       Some adapters or targets may only support one mode; some support both.\n"
 		"    --help                                           Displays this message and exits.\n"
 		"    --list                                           Prints a listing of connected adapters and exits.\n"
 		"    --port PORT                                      Specifies the port number the daemon should listen on.\n"
-		"    --serial SERIAL_NUM                              Specifies the serial number of the JTAG adapter. This argument is mandatory.\n"
+		"    --serial SERIAL_NUM                              Specifies the serial number of the debug adapter. This argument is mandatory.\n"
 		);
 }
 

@@ -40,7 +40,7 @@ using namespace std;
 /**
 	@brief Main function for handling connections
  */
-void ProcessConnection(JtagInterface* iface, Socket& client)
+void ProcessConnection(TestInterface* iface, Socket& client)
 {
 	try
 	{
@@ -79,6 +79,11 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 				"");
 		}
 
+		//Pre-cache casted versions of the interface
+		auto jface = dynamic_cast<JtagInterface*>(iface);
+		auto sface = dynamic_cast<SWDInterface*>(iface);
+		auto gface = dynamic_cast<GPIOInterface*>(iface);
+
 		//Sit around and wait for messages
 		while(RecvMessage(client, packet))
 		{
@@ -87,6 +92,10 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 			bool quit = false;
 			switch(packet.Payload_case())
 			{
+				case JtaghalPacket::kHello:
+					LogWarning("Got unexpected hello packet in the middle of a session\n");
+					break;
+
 				//Client is disconnecting
 				case JtaghalPacket::kDisconnectRequest:
 					LogVerbose("Normal termination requested\n");
@@ -136,25 +145,26 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 
 				//Query performance counters
 				case JtaghalPacket::kPerfRequest:
+					if(jface)
 					{
 						auto ir = reply.mutable_inforeply();
 
 						switch(packet.perfrequest().req())
 						{
 							case JtagPerformanceRequest::ShiftOps:
-								ir->set_num(iface->GetShiftOpCount());
+								ir->set_num(jface->GetShiftOpCount());
 								break;
 
 							case JtagPerformanceRequest::DataBits:
-								ir->set_num(iface->GetDataBitCount());
+								ir->set_num(jface->GetDataBitCount());
 								break;
 
 							case JtagPerformanceRequest::ModeBits:
-								ir->set_num(iface->GetModeBitCount());
+								ir->set_num(jface->GetModeBitCount());
 								break;
 
 							case JtagPerformanceRequest::DummyClocks:
-								ir->set_num(iface->GetDummyClockCount());
+								ir->set_num(jface->GetDummyClockCount());
 								break;
 
 							default:
@@ -168,13 +178,16 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 								"");
 						}
 					}
+					else
+						LogWarning("PerfRequest not supported - adapter isn't JTAG\n");
 					break;
 
 				//TODO: should this be an InfoRequest?
 				case JtaghalPacket::kSplitRequest:
+					if(jface)
 					{
 						auto ir = reply.mutable_inforeply();
-						ir->set_num(iface->IsSplitScanSupported());
+						ir->set_num(jface->IsSplitScanSupported());
 
 						if(!SendMessage(client, reply))
 						{
@@ -183,36 +196,39 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 								"");
 						}
 					}
+					else
+						LogWarning("SplitRequest not supported - adapter isn't JTAG\n");
 					break;
 
 				//State level interface
 				case JtaghalPacket::kStateRequest:
+					if(jface)
 					{
 						auto state = packet.staterequest().state();
 						switch(state)
 						{
 							case JtagStateChangeRequest::TestLogicReset:
-								iface->TestLogicReset();
+								jface->TestLogicReset();
 								break;
 
 							case JtagStateChangeRequest::EnterShiftIR:
-								iface->EnterShiftIR();
+								jface->EnterShiftIR();
 								break;
 
 							case JtagStateChangeRequest::LeaveExitIR:
-								iface->LeaveExit1IR();
+								jface->LeaveExit1IR();
 								break;
 
 							case JtagStateChangeRequest::EnterShiftDR:
-								iface->EnterShiftDR();
+								jface->EnterShiftDR();
 								break;
 
 							case JtagStateChangeRequest::LeaveExitDR:
-								iface->LeaveExit1DR();
+								jface->LeaveExit1DR();
 								break;
 
 							case JtagStateChangeRequest::ResetToIdle:
-								iface->ResetToIdle();
+								jface->ResetToIdle();
 								break;
 
 							default:
@@ -220,10 +236,13 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 								break;
 						}
 					}
+					else
+						LogWarning("StateRequest not supported - adapter isn't JTAG\n");
 					break;
 
 				//JTAG scan operations
 				case JtaghalPacket::kScanRequest:
+					if(jface)
 					{
 						auto req = packet.scanrequest();
 						size_t count = req.totallen();
@@ -236,7 +255,7 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 
 						//If no read or write data, just send dummy clocks
 						if(req.writedata().empty() && !req.readrequested())
-							iface->SendDummyClocks(count);
+							jface->SendDummyClocks(count);
 
 						//We're sending or receiving data. It's an actual shift operation.
 						else
@@ -254,12 +273,12 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 							{
 								//Read only
 								if(req.writedata().size() == 0)
-									iface->ShiftDataReadOnly(rxdata, count);
+									jface->ShiftDataReadOnly(rxdata, count);
 
 								//Write only
 								else
 								{
-									if(!iface->ShiftDataWriteOnly(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count))
+									if(!jface->ShiftDataWriteOnly(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count))
 									{
 										throw JtagExceptionWrapper(
 											"Read wasn't actually deferred - not implemented!",
@@ -270,7 +289,7 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 
 							//Non-split scans
 							else
-								iface->ShiftData(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count);
+								jface->ShiftData(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count);
 						}
 
 						//Send the reply
@@ -288,25 +307,25 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 							delete[] rxdata;
 						}
 					}
+					else
+						LogWarning("ScanRequest not supported - adapter isn't JTAG\n");
 					break;
 
 				//Read GPIO state and send it to the client
 				case JtaghalPacket::kGpioReadRequest:
 					{
 						auto state = reply.mutable_bankstate();
-
-						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
-						if(gpio != NULL)
+						if(gface)
 						{
-							gpio->ReadGpioState();
+							gface->ReadGpioState();
 
-							int count = gpio->GetGpioCount();
+							int count = gface->GetGpioCount();
 							vector<uint8_t> pinstates;
 							for(int i=0; i<count; i++)
 							{
 								auto s = state->add_states();
-								s->set_value(gpio->GetGpioValueCached(i));
-								s->set_is_output(gpio->GetGpioDirection(i));
+								s->set_value(gface->GetGpioValueCached(i));
+								s->set_is_output(gface->GetGpioDirection(i));
 							}
 						}
 
@@ -327,233 +346,6 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 			/*
 			switch(opcode)
 			{
-				//Deferred write processing
-				case JTAGD_OP_COMMIT:
-					{
-						iface->Commit();
-
-						//Send an ACK once the commit has occurred
-						uint8_t dummy = 0;
-						client.SendLooped((unsigned char*)&dummy, 1);
-					}
-					break;
-
-				case JTAGD_OP_SHIFT_DATA:
-				case JTAGD_OP_SHIFT_DATA_WO:
-					{
-						uint8_t last_tms;
-						uint32_t count;
-						client.RecvLooped((unsigned char*)&last_tms, 1);
-						client.RecvLooped((unsigned char*)&count, 4);
-
-						//JTAGD_OP_SHIFT_DATA_WO is write only, so no response
-						bool want_response = (opcode == JTAGD_OP_SHIFT_DATA);
-
-						int bytesize =  ceil(count / 8.0f);
-
-						//Allocate buffer if we want a response
-						unsigned char* recv_data = NULL;
-						if(want_response)
-							recv_data = new unsigned char[bytesize];
-
-						//Allocate buffer for data
-						unsigned char* send_data = new unsigned char[bytesize];
-
-						//Receive data and send it
-						client.RecvLooped(send_data, bytesize);
-
-						try
-						{
-							iface->ShiftData(last_tms, send_data, recv_data, count);
-
-							//Send response back, if desired
-							if(want_response)
-								client.SendLooped(recv_data, bytesize);
-						}
-						catch(const JtagException& ex)
-						{
-							//If the actual shift operation fails, send an error code to the source
-							//FIXME: This is busticated! Client is trying to read a reply, not a status code
-							//if(ex.GetType() == JtagException::EXCEPTION_TYPE_ADAPTER)
-							if(true)
-							{
-								uint8_t status = 1;
-								client.SendLooped(&status, 1);
-
-								//Print error anyway
-								LogWarning("Non-fatal exception, passed to caller\n");
-								LogWarning("%s\n", ex.GetDescription().c_str());
-							}
-
-							//otherwise re-throw and abort
-							else
-								throw;
-						}
-
-						//Clean up
-						delete[] send_data;
-						if(want_response)
-						{
-							delete[] recv_data;
-							recv_data = NULL;
-						}
-					}
-					break;
-
-				case JTAGD_OP_SHIFT_DATA_WRITE_ONLY:
-					{
-						uint8_t last_tms;
-						uint32_t count;
-						uint8_t want_response;
-						client.RecvLooped((unsigned char*)&last_tms, 1);
-						client.RecvLooped((unsigned char*)&count, 4);
-						client.RecvLooped((unsigned char*)&want_response, 1);
-
-						int bytesize =  ceil(count / 8.0f);
-
-						//Allocate buffer for data
-						unsigned char* send_data = new unsigned char[bytesize];
-
-						//Receive data and send it
-						client.RecvLooped(send_data, bytesize);
-
-						try
-						{
-							//Send status byte back
-							recv_buf.push_back(0);
-
-							//Preallocate buffer space
-							if(want_response)
-								recv_buf.resize(bytesize + 1);
-
-							//Do the shift
-							recv_buf[0] = iface->ShiftDataWriteOnly(last_tms, send_data, &recv_buf[1], count);
-
-							//Send back status
-							client.SendLooped(&recv_buf[0], recv_buf[0] ? 1 : recv_buf.size());
-							recv_buf.clear();
-						}
-						catch(const JtagException& ex)
-						{
-							//If the actual shift operation fails, send an error code to the source
-							//if(ex.GetType() == JtagException::EXCEPTION_TYPE_ADAPTER)
-							if(true)
-							{
-								uint8_t status = -1;
-								client.SendLooped(&status, 1);
-
-								//Print error anyway
-								LogWarning("Non-fatal exception, passed to caller\n");
-								LogWarning("%s\n", ex.GetDescription().c_str());
-							}
-
-							//otherwise re-throw and abort
-							else
-								throw;
-						}
-
-						//Clean up
-						delete[] send_data;
-					}
-					break;
-
-				case JTAGD_OP_SHIFT_DATA_READ_ONLY:
-					{
-						uint32_t count;
-						client.RecvLooped((unsigned char*)&count, 4);
-						if(count == 0)
-						{
-							throw JtagExceptionWrapper(
-								"Invalid size",
-								"");
-						}
-
-						int bytesize =  ceil(count / 8.0f);
-
-						//Allocate buffer
-						unsigned char* recv_data = new unsigned char[bytesize];
-
-						try
-						{
-							bool deferred = iface->ShiftDataReadOnly(recv_data, count);
-
-							//Send status byte back
-							uint8_t status = deferred ? 1 : 0;
-							client.SendLooped(&status, 1);
-
-							//Send response back, if meaningful
-							if(deferred)
-								client.SendLooped(recv_data, bytesize);
-						}
-						catch(const JtagException& ex)
-						{
-							//If the actual shift operation fails, send an error code to the source
-							//if(ex.GetType() == JtagException::EXCEPTION_TYPE_ADAPTER)
-							if(true)
-							{
-								uint8_t status = -1;
-								client.SendLooped(&status, 1);
-
-								//Print error anyway
-								LogWarning("Non-fatal exception, passed to caller\n");
-								LogWarning("%s\n", ex.GetDescription().c_str());
-							}
-
-							//otherwise re-throw and abort
-							else
-								throw;
-						}
-
-						//Clean up
-						delete[] recv_data;
-						recv_data = NULL;
-					}
-					break;
-
-				case JTAGD_OP_DUMMY_CLOCK:
-					{
-						uint32_t count;
-						client.RecvLooped((unsigned char*)&count, 4);
-						iface->SendDummyClocks(count);
-					}
-					break;
-
-				case JTAGD_OP_DUMMY_CLOCK_DEFERRED:
-					{
-						uint32_t count;
-						client.RecvLooped((unsigned char*)&count, 4);
-						iface->SendDummyClocksDeferred(count);
-					}
-					break;
-
-				case JTAGD_OP_PERF_SHIFT:
-					{
-						uint64_t n = iface->GetShiftOpCount();
-						client.SendLooped((unsigned char*)&n, 8);
-					}
-					break;
-
-				case JTAGD_OP_PERF_DATA:
-					{
-						uint64_t n = iface->GetDataBitCount();
-						client.SendLooped((unsigned char*)&n, 8);
-					}
-					break;
-
-				case JTAGD_OP_PERF_MODE:
-					{
-						uint64_t n = iface->GetModeBitCount();
-						client.SendLooped((unsigned char*)&n, 8);
-					}
-					break;
-
-				case JTAGD_OP_PERF_DUMMY:
-					{
-						uint64_t n = iface->GetDummyClockCount();
-						client.SendLooped((unsigned char*)&n, 8);
-					}
-					break;
-
 				case JTAGD_OP_WRITE_GPIO_STATE:
 					{
 						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
@@ -575,6 +367,7 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 					break;
 			}
 			*/
+
 			if(quit)
 				break;
 		}
