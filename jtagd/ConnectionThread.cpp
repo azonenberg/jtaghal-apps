@@ -134,6 +134,42 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 					};
 					break;
 
+				//Query performance counters
+				case JtaghalPacket::kPerfRequest:
+					{
+						auto ir = reply.mutable_inforeply();
+
+						switch(packet.perfrequest().req())
+						{
+							case JtagPerformanceRequest::ShiftOps:
+								ir->set_num(iface->GetShiftOpCount());
+								break;
+
+							case JtagPerformanceRequest::DataBits:
+								ir->set_num(iface->GetDataBitCount());
+								break;
+
+							case JtagPerformanceRequest::ModeBits:
+								ir->set_num(iface->GetModeBitCount());
+								break;
+
+							case JtagPerformanceRequest::DummyClocks:
+								ir->set_num(iface->GetDummyClockCount());
+								break;
+
+							default:
+								LogError("Got invalid PerfRequest\n");
+						}
+
+						if(!SendMessage(client, reply))
+						{
+							throw JtagExceptionWrapper(
+								"Failed to send info reply",
+								"");
+						}
+					}
+					break;
+
 				//TODO: should this be an InfoRequest?
 				case JtaghalPacket::kSplitRequest:
 					{
