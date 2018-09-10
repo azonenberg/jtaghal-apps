@@ -572,6 +572,7 @@ int main(int argc, char* argv[])
 					LogNotice("Unlocking (will probably trigger bulk flash erase)...\n");
 					pdev->ClearReadLock();
 				};
+				break;
 
 			default:
 				break;
