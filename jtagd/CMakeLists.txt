@@ -1,8 +1,11 @@
 # CMake build script for jtagd.
 
+set(PROTOBUF_DIR ${CMAKE_BINARY_DIR}/protobufs)
+include_directories(${PROTOBUF_DIR})
+
 set(JTAGD_SOURCES main.cpp ConnectionThread.cpp)
 
-add_executable(jtagd 
+add_executable(jtagd
 	${JTAGD_SOURCES})
 target_link_libraries(jtagd jtaghal)
 target_include_directories(jtagd

@@ -33,6 +33,7 @@
 	@brief Main function for handling connections from client
  */
 #include "jtagd.h"
+#include "../../lib/jtaghal/ProtobufHelpers.h"
 
 using namespace std;
 
@@ -51,33 +52,245 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 				"");
 		}
 
-		vector<unsigned char> recv_buf;
+		//Send the server-hello message
+		JtaghalPacket packet;
+		auto h = packet.mutable_hello();
+		h->set_magic("JTAGHAL");
+		h->set_version(1);
+		if(!SendMessage(client, packet))
+		{
+			throw JtagExceptionWrapper(
+				"Failed to send serverhello",
+				"");
+		}
+
+		//Get the client-hello message
+		if(!RecvMessage(client, packet, JtaghalPacket::kHello))
+		{
+			throw JtagExceptionWrapper(
+				"Failed to get clienthello",
+				"");
+		}
+		auto ch = packet.hello();
+		if( (ch.magic() != "JTAGHAL") || (ch.version() != 1) )
+		{
+			throw JtagExceptionWrapper(
+				"ClientHello has wrong magic/version",
+				"");
+		}
 
 		//Sit around and wait for messages
-		uint8_t opcode;
-		while(1 == client.RecvLooped((unsigned char*)&opcode, 1))
+		while(RecvMessage(client, packet))
 		{
-			bool quit = false;
+			JtaghalPacket reply;
 
-			switch(opcode)
+			bool quit = false;
+			switch(packet.Payload_case())
 			{
-				//No mutex locking needed for stuff that just queries constant member vars
-				case JTAGD_OP_GET_NAME:
-					client.SendPascalString(iface->GetName());
+				//Client is disconnecting
+				case JtaghalPacket::kDisconnectRequest:
+					LogVerbose("Normal termination requested\n");
+					quit = true;
 					break;
-				case JTAGD_OP_GET_SERIAL:
-					client.SendPascalString(iface->GetSerial());
+
+				//Flushing the queue
+				case JtaghalPacket::kFlushRequest:
+					iface->Commit();
 					break;
-				case JTAGD_OP_GET_USERID:
-					client.SendPascalString(iface->GetUserID());
-					break;
-				case JTAGD_OP_GET_FREQ:
+
+				//Read adapter info and send it to the client
+				case JtaghalPacket::kInfoRequest:
 					{
-						uint32_t freq = iface->GetFrequency();
-						client.SendLooped((unsigned char*)&freq, 4);
+						auto ir = reply.mutable_inforeply();
+
+						switch(packet.inforequest().req())
+						{
+							case InfoRequest::HwName:
+								ir->set_str(iface->GetName());
+								break;
+
+							case InfoRequest::HwSerial:
+								ir->set_str(iface->GetSerial());
+								break;
+
+							case InfoRequest::Userid:
+								ir->set_str(iface->GetUserID());
+								break;
+
+							case InfoRequest::Freq:
+								ir->set_num(iface->GetFrequency());
+								break;
+
+							default:
+								LogError("Got invalid InfoRequest\n");
+						}
+
+						if(!SendMessage(client, reply))
+						{
+							throw JtagExceptionWrapper(
+								"Failed to send info reply",
+								"");
+						}
+					};
+					break;
+
+				//TODO: should this be an InfoRequest?
+				case JtaghalPacket::kSplitRequest:
+					{
+						auto ir = reply.mutable_inforeply();
+						ir->set_num(iface->IsSplitScanSupported());
+
+						if(!SendMessage(client, reply))
+						{
+							throw JtagExceptionWrapper(
+								"Failed to send info reply",
+								"");
+						}
 					}
 					break;
 
+				//State level interface
+				case JtaghalPacket::kStateRequest:
+					{
+						auto state = packet.staterequest().state();
+						switch(state)
+						{
+							case JtagStateChangeRequest::TestLogicReset:
+								iface->TestLogicReset();
+								break;
+
+							case JtagStateChangeRequest::EnterShiftIR:
+								iface->EnterShiftIR();
+								break;
+
+							case JtagStateChangeRequest::LeaveExitIR:
+								iface->LeaveExit1IR();
+								break;
+
+							case JtagStateChangeRequest::EnterShiftDR:
+								iface->EnterShiftDR();
+								break;
+
+							case JtagStateChangeRequest::LeaveExitDR:
+								iface->LeaveExit1DR();
+								break;
+
+							case JtagStateChangeRequest::ResetToIdle:
+								iface->ResetToIdle();
+								break;
+
+							default:
+								LogError("Unimplemented chain state: %d\n", state);
+								break;
+						}
+					}
+					break;
+
+				//JTAG scan operations
+				case JtaghalPacket::kScanRequest:
+					{
+						auto req = packet.scanrequest();
+						size_t count = req.totallen();
+						size_t bytesize =  ceil(count / 8.0f);
+
+						//If we are going to have read data, allocate a buffer for it
+						uint8_t* rxdata = NULL;
+						if(req.readrequested())
+							rxdata = new uint8_t[bytesize];
+
+						//If no read or write data, just send dummy clocks
+						if(req.writedata().empty() && !req.readrequested())
+							iface->SendDummyClocks(count);
+
+						//We're sending or receiving data. It's an actual shift operation.
+						else
+						{
+							//Sanity check that the send data is big enough
+							if(req.writedata().size() < bytesize)
+							{
+								throw JtagExceptionWrapper(
+									"Not enough TX data for requested clock cycle count",
+									"");
+							}
+
+							//Split scans
+							if(req.split())
+							{
+								//Read only
+								if(req.writedata().size() == 0)
+									iface->ShiftDataReadOnly(rxdata, count);
+
+								//Write only
+								else
+								{
+									if(!iface->ShiftDataWriteOnly(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count))
+									{
+										throw JtagExceptionWrapper(
+											"Read wasn't actually deferred - not implemented!",
+											"");
+									}
+								}
+							}
+
+							//Non-split scans
+							else
+								iface->ShiftData(req.settmsatend(), (const uint8_t*)req.writedata().c_str(), rxdata, count);
+						}
+
+						//Send the reply
+						if(rxdata)
+						{
+							auto sr = reply.mutable_scanreply();
+							sr->set_readdata(string((char*)rxdata, bytesize));
+
+							if(!SendMessage(client, reply))
+							{
+								throw JtagExceptionWrapper(
+									"Failed to send scan reply",
+									"");
+							}
+							delete[] rxdata;
+						}
+					}
+					break;
+
+				//Read GPIO state and send it to the client
+				case JtaghalPacket::kGpioReadRequest:
+					{
+						auto state = reply.mutable_bankstate();
+
+						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
+						if(gpio != NULL)
+						{
+							gpio->ReadGpioState();
+
+							int count = gpio->GetGpioCount();
+							vector<uint8_t> pinstates;
+							for(int i=0; i<count; i++)
+							{
+								auto s = state->add_states();
+								s->set_value(gpio->GetGpioValueCached(i));
+								s->set_is_output(gpio->GetGpioDirection(i));
+							}
+						}
+
+						if(!SendMessage(client, reply))
+						{
+							throw JtagExceptionWrapper(
+								"Failed to send GPIO state",
+								"");
+						}
+					}
+					break;
+
+				default:
+					LogError("Unimplemented type field: %d\n", packet.Payload_case());
+					break;
+			}
+
+			/*
+			switch(opcode)
+			{
 				//Deferred write processing
 				case JTAGD_OP_COMMIT:
 					{
@@ -261,13 +474,6 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 					}
 					break;
 
-				case JTAGD_OP_SPLIT_SUPPORTED:
-					{
-						uint8_t val = (iface->IsSplitScanSupported() ? 1 : 0);
-						client.SendLooped((unsigned char*)&val, 1);
-					}
-					break;
-
 				case JTAGD_OP_DUMMY_CLOCK:
 					{
 						uint32_t count;
@@ -312,46 +518,6 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 					}
 					break;
 
-				case JTAGD_OP_HAS_GPIO:
-					{
-						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
-						uint8_t n = 0;
-						if(gpio != NULL)
-							n = 1;
-						client.SendLooped((unsigned char*)&n, 1);
-					}
-					break;
-				case JTAGD_OP_GET_GPIO_PIN_COUNT:
-					{
-						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
-						uint8_t n = 0;
-						if(gpio != NULL)
-							n = gpio->GetGpioCount();
-						client.SendLooped((unsigned char*)&n, 1);
-					}
-					break;
-
-				case JTAGD_OP_READ_GPIO_STATE:
-					{
-						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
-						if(gpio != NULL)
-						{
-							gpio->ReadGpioState();
-
-							int count = gpio->GetGpioCount();
-							vector<uint8_t> pinstates;
-							for(int i=0; i<count; i++)
-							{
-								pinstates.push_back(
-									gpio->GetGpioValueCached(i) |
-									(gpio->GetGpioDirection(i) << 1)
-									);
-							}
-							client.SendLooped((unsigned char*)&pinstates[0], count);
-						}
-					}
-					break;
-
 				case JTAGD_OP_WRITE_GPIO_STATE:
 					{
 						GPIOInterface* gpio = dynamic_cast<GPIOInterface*>(iface);
@@ -371,39 +537,8 @@ void ProcessConnection(JtagInterface* iface, Socket& client)
 						}
 					};
 					break;
-
-				case JTAGD_OP_ENTER_SIR:
-					iface->EnterShiftIR();
-					break;
-
-				case JTAGD_OP_LEAVE_E1IR:
-					iface->LeaveExit1IR();
-					break;
-
-				case JTAGD_OP_ENTER_SDR:
-					iface->EnterShiftDR();
-					break;
-
-				case JTAGD_OP_LEAVE_E1DR:
-					iface->LeaveExit1DR();
-					break;
-
-				case JTAGD_OP_RESET_IDLE:
-					iface->ResetToIdle();
-					break;
-
-				case JTAGD_OP_QUIT:
-					LogVerbose("Normal termination requested\n");
-					quit = true;
-					break;
-
-				default:
-					{
-						LogError("Unrecognized opcode (0x%02x) received from client\n", (int)opcode);
-						return;
-					}
 			}
-
+			*/
 			if(quit)
 				break;
 		}
