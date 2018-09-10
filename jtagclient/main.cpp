@@ -547,6 +547,7 @@ int main(int argc, char* argv[])
 					LogNotice("Locking...\n");
 					pdev->SetReadLock();
 				};
+				break;
 
 			case MODE_UNLOCK:
 				{
