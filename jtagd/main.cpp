@@ -459,7 +459,7 @@ void ListAdapters()
 		ShowVersion();
 
 		//disable compiler warning if no APIs are found
-		#if( defined(HAVE_DJTG) || defined(HAVE_FTD2XX) )
+		#if( defined(HAVE_DJTG) || defined(HAVE_FTD2XX) || defined(HAVE_LIBUSB) )
 			string ver;
 			int ndev = 0;
 		#endif
@@ -492,10 +492,10 @@ void ListAdapters()
 				}
 			}
 		#else	//#ifdef HAVE_DJTG
-			printf("Digilent API version: not supported\n");
+			LogNotice("Digilent API version: not supported\n");
 		#endif
 
-		printf("\n");
+		LogNotice("\n");
 		#ifdef HAVE_FTD2XX
 			ver = FTDIJtagInterface::GetAPIVersion();
 			LogNotice("FTDI API version: %s\n", ver.c_str());
@@ -529,6 +529,39 @@ void ListAdapters()
 			}
 		#else	//#ifdef HAVE_FTD2XX
 			LogNotice("FTDI API version: not supported\n");
+		#endif
+
+		LogNotice("\n");
+		#ifdef HAVE_LIBUSB
+			ver = GlasgowSWDInterface::GetAPIVersion();
+			LogNotice("Glasgow API version: %s\n", ver.c_str());
+			ndev = GlasgowSWDInterface::GetInterfaceCount();
+			LogNotice("    Enumerating interfaces... %d found\n", ndev);
+			if(ndev == 0)
+				LogNotice("No interfaces found\n");
+			else
+			{
+				int idev = 0;
+				LogIndenter li;
+				for(int i=0; i<ndev; i++)
+				{
+					try
+					{
+						LogNotice("Interface %d: %s\n", idev, GlasgowSWDInterface::GetDescription(i).c_str());
+						LogIndenter li;
+						LogNotice("Serial number:  %s\n", GlasgowSWDInterface::GetSerialNumber(i).c_str());
+						LogNotice("User ID:        %s\n", GlasgowSWDInterface::GetSerialNumber(i).c_str());
+						//LogNotice("Default clock:  %.2f MHz\n", GlasgowSWDInterface::GetDefaultFrequency(i)/1000000.0f);
+						idev++;
+					}
+					catch(const JtagException& e)
+					{
+						LogNotice("Interface %d: Error getting device information\n", i);
+					}
+				}
+			}
+		#else	//#ifdef HAVE_LIBUSB
+			LogNotice("Glasgow API version: not supported\n");
 		#endif
 	}
 
