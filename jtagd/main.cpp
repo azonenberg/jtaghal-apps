@@ -105,6 +105,8 @@ int main(int argc, char* argv[])
 					api_type = API_FTDI;
 				else if(sapi == "pipe")
 					api_type = API_PIPE;
+				else if(sapi == "glasgow")
+					api_type = API_GLASGOW;
 				else
 				{
 					printf("Unrecognized interface API \"%s\", use --help\n", sapi.c_str());
