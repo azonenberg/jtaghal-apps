@@ -52,11 +52,26 @@ void ProcessConnection(TestInterface* iface, Socket& client)
 				"");
 		}
 
+		//Pre-cache casted versions of the interface
+		auto jface = dynamic_cast<JtagInterface*>(iface);
+		auto sface = dynamic_cast<SWDInterface*>(iface);
+		auto gface = dynamic_cast<GPIOInterface*>(iface);
+
 		//Send the server-hello message
 		JtaghalPacket packet;
 		auto h = packet.mutable_hello();
 		h->set_magic("JTAGHAL");
 		h->set_version(1);
+		if(jface)
+			h->set_transport(Hello::TRANSPORT_JTAG);
+		else if(sface)
+			h->set_transport(Hello::TRANSPORT_SWD);
+		else
+		{
+			throw JtagExceptionWrapper(
+				"Unsupported transport",
+				"");
+		}
 		if(!SendMessage(client, packet))
 		{
 			throw JtagExceptionWrapper(
@@ -78,11 +93,29 @@ void ProcessConnection(TestInterface* iface, Socket& client)
 				"ClientHello has wrong magic/version",
 				"");
 		}
+		switch(ch.transport())
+		{
+			case Hello::TRANSPORT_JTAG:
+				if(!jface)
+				{
+					throw JtagExceptionWrapper(
+						"Client requested JTAG but this adapter doesn't support it",
+						"");
+				}
+				break;
 
-		//Pre-cache casted versions of the interface
-		auto jface = dynamic_cast<JtagInterface*>(iface);
-		auto sface = dynamic_cast<SWDInterface*>(iface);
-		auto gface = dynamic_cast<GPIOInterface*>(iface);
+			case Hello::TRANSPORT_SWD:
+				if(!sface)
+				{
+					throw JtagExceptionWrapper(
+						"Client requested SWD but this adapter doesn't support it",
+						"");
+				}
+				break;
+
+			default:
+				break;
+		}
 
 		//Sit around and wait for messages
 		while(RecvMessage(client, packet))
