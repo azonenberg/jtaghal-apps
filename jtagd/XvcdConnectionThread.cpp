@@ -2,7 +2,7 @@
 *                                                                                                                      *
 * ANTIKERNEL v0.1                                                                                                      *
 *                                                                                                                      *
-* Copyright (c) 2012-2016 Andrew D. Zonenberg                                                                          *
+* Copyright (c) 2012-2019 Andrew D. Zonenberg                                                                          *
 * All rights reserved.                                                                                                 *
 *                                                                                                                      *
 * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the     *
@@ -30,30 +30,95 @@
 /**
 	@file
 	@author Andrew D. Zonenberg
-	@brief Main include file for JTAG server daemon
+	@brief Main function for handling connections from client
  */
+#include "jtagd.h"
+#include "../../lib/jtaghal/ProtobufHelpers.h"
 
-#ifndef jtagd_h
-#define jtagd_h
+using namespace std;
 
+/**
+	@brief Main function for handling connections using the XVCD protocol
+ */
+void ProcessXvcdConnection(TestInterface* iface, Socket& client)
+{
+	try
+	{
+		//Set no-delay flag
+		if(!client.DisableNagle())
+		{
+			throw JtagExceptionWrapper(
+				"Failed to set TCP_NODELAY",
+				"");
+		}
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <memory.h>
+		//Pre-cache casted versions of the interface.
+		//JTAG only, no SWD or GPIO supported
+		auto jface = dynamic_cast<JtagInterface*>(iface);
 
-#include <unistd.h>
-#include <signal.h>
-#include <pthread.h>
+		//"shift:", 32 bit little endian word, strings of bits
+		//open_hw_target -xvc_url localhost:2542
+		while(true)
+		{
+			//Read command (bytes until we get a colon)
+			//All commands are at least six bytes long
+			unsigned char cmdbuf[128] = {0};
+			client.RecvLooped(cmdbuf, 6);
+			LogDebug("start: %s\n", cmdbuf);
 
-#include "../../lib/log/log.h"
-#include "../../lib/xptools/Socket.h"
+			//Should be "getinfo:", read 2 more bytes to make sure
+			if(cmdbuf[0] == 'g')
+			{
+				client.RecvLooped(cmdbuf+6, 2);
+				LogDebug("command: %s\n", cmdbuf);
+				if(0 != strcmp((char*)cmdbuf, "getinfo:"))
+				{
+					throw JtagExceptionWrapper(
+						"Got a garbage command (expected getinfo, got something else)",
+						"");
+				}
 
-//TODO: generate git version string somehow?
+				const char* info = "xvcServer_v1.0:2048\n";
+				LogDebug("sending %s\n", info);
+				client.SendLooped((const unsigned char*)info, strlen(info));
+			}
 
-#include "../../lib/jtaghal/jtaghal.h"
-#include "jtagd_opcodes_enum.h"
+			//Is it a shift command?
+			else if(!strcmp((char*)cmdbuf, "shift:"))
+			{
+				throw JtagExceptionWrapper(
+					"shift command not supported",
+					"");
+			}
 
-void ProcessConnection(TestInterface* iface, Socket& client);
-void ProcessXvcdConnection(TestInterface* iface, Socket& client);
+			//Nope, must be settck
+			else
+			{
+				client.RecvLooped(cmdbuf+6, 1);
+				if(0 != strcmp((char*)cmdbuf, "settck:"))
+				{
+					throw JtagExceptionWrapper(
+						"Got a garbage command (expected settck, got something else)",
+						"");
+				}
 
-#endif
+				//Read the clock speed
+				uint32_t clock_period_ns;
+				client.RecvLooped((unsigned char*)&clock_period_ns, 4);
+				float clock_mhz = 1000.0f / clock_period_ns;
+				LogDebug("Client requested clock period %d ns (%.2f MHz)\n",
+					clock_period_ns, clock_mhz);
+				LogNotice("Ignoring requested clock speed (unimplemented)\n");
+
+				client.SendLooped((unsigned char*)&clock_period_ns, 4);
+			}
+		}
+	}
+	catch(JtagException& ex)
+	{
+		//Socket closed? Don't display the message, it just spams the console
+		if(ex.GetDescription().find("Socket closed") == string::npos)
+			LogError("%s\n", ex.GetDescription().c_str());
+		fflush(stdout);
+	}
+}

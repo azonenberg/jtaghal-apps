@@ -3,7 +3,7 @@
 set(PROTOBUF_DIR ${CMAKE_BINARY_DIR}/protobufs)
 include_directories(${PROTOBUF_DIR})
 
-set(JTAGD_SOURCES main.cpp ConnectionThread.cpp)
+set(JTAGD_SOURCES main.cpp ConnectionThread.cpp XvcdConnectionThread.cpp)
 
 add_executable(jtagd
 	${JTAGD_SOURCES})

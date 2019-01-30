@@ -2,7 +2,7 @@
 *                                                                                                                      *
 * ANTIKERNEL v0.1                                                                                                      *
 *                                                                                                                      *
-* Copyright (c) 2012-2017 Andrew D. Zonenberg                                                                          *
+* Copyright (c) 2012-2019 Andrew D. Zonenberg                                                                          *
 * All rights reserved.                                                                                                 *
 *                                                                                                                      *
 * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the     *
@@ -69,6 +69,12 @@ int main(int argc, char* argv[])
 			TRANSPORT_SWD
 		} transport_type = TRANSPORT_JTAG;
 
+		enum sock_protocols
+		{
+			PROTO_JTAGHAL,
+			PROTO_XVCD
+		} socket_protocol = PROTO_JTAGHAL;
+
 		Severity console_verbosity = Severity::NOTICE;
 
 		//Operations to do
@@ -130,6 +136,26 @@ int main(int argc, char* argv[])
 				else
 				{
 					printf("Unrecognized transport \"%s\", use --help\n", st.c_str());
+					return 1;
+				}
+			}
+			else if(s == "--proto")
+			{
+				if(i+1 >= argc)
+				{
+					throw JtagExceptionWrapper(
+						"Not enough arguments",
+						"");
+				}
+
+				string st = argv[++i];
+				if(st == "jtaghal")
+					socket_protocol = PROTO_JTAGHAL;
+				else if(st == "xvcd")
+					socket_protocol = PROTO_XVCD;
+				else
+				{
+					printf("Unrecognized protocol \"%s\", use --help\n", st.c_str());
 					return 1;
 				}
 			}
@@ -358,7 +384,15 @@ int main(int argc, char* argv[])
 				if(!client.IsValid())
 					break;
 				LogNotice("Client connected\n");
-				ProcessConnection(iface, client);
+				switch(socket_protocol)
+				{
+					case PROTO_JTAGHAL:
+						ProcessConnection(iface, client);
+						break;
+					case PROTO_XVCD:
+						ProcessXvcdConnection(iface, client);
+						break;
+				}
 				LogNotice("Client disconnected\n");
 			}
 			catch(const JtagException& ex)
@@ -427,6 +461,9 @@ void ShowUsage()
 		"    --ftdi_layout LAYOUT                             Specifies the FTDI adapter configuration to use. This argument is mandatory\n"
 		"                                                       if --api ftdi is specified.\n"
 		"                                                     Legal values: jtagkey, hs1\n"
+		"    --protocol jtaghal|xvcd                          Specifies the socket protocol to use.\n"
+		"                                                       jtaghal: high level protobuf based, supports metadata\n"
+		"                                                       xvcd: low level protocol compatible with Xilinx XVC protocol\n"
 		"    --transport jtag|swd                             Specifies the protocol the target speaks (JTAG or SWD). Defaults to JTAG.\n"
 		"                                                       Some adapters or targets may only support one mode; some support both.\n"
 		"    --help                                           Displays this message and exits.\n"
