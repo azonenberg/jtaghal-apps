@@ -2,7 +2,7 @@
 *                                                                                                                      *
 * ANTIKERNEL v0.1                                                                                                      *
 *                                                                                                                      *
-* Copyright (c) 2012-2018 Andrew D. Zonenberg                                                                          *
+* Copyright (c) 2012-2019 Andrew D. Zonenberg                                                                          *
 * All rights reserved.                                                                                                 *
 *                                                                                                                      *
 * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the     *
@@ -50,12 +50,12 @@
 #include <signal.h>
 
 void TopLevelShell(NetworkedJtagInterface& iface);
-void DeviceShell(TestableDevice* pdev);
-void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget);
+void DeviceShell(TestableDevice* pdev, JtagInterface* iface);
+void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget, JtagInterface* iface);
 
 void OnAutodetect(NetworkedJtagInterface& iface, bool quiet);
 void OnTargets(NetworkedJtagInterface& iface);
-void OnTarget(DebuggerInterface* iface, const std::vector<std::string>& args, unsigned int ndev);
+void OnTarget(DebuggerInterface* iface, const std::vector<std::string>& args, unsigned int ndev, JtagInterface* jface);
 void OnProgram(ProgrammableDevice* pdev, const std::vector<std::string>& args);
 void OnTargets(DebuggerInterface* iface);
 

@@ -2,7 +2,7 @@
 *                                                                                                                      *
 * ANTIKERNEL v0.1                                                                                                      *
 *                                                                                                                      *
-* Copyright (c) 2012-2018 Andrew D. Zonenberg                                                                          *
+* Copyright (c) 2012-2019 Andrew D. Zonenberg                                                                          *
 * All rights reserved.                                                                                                 *
 *                                                                                                                      *
 * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the     *
@@ -99,7 +99,7 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 
 			//Actually run the shell.
 			//skip elapsed time when in an interactive shell
-			DeviceShell(pdev);
+			DeviceShell(pdev, &iface);
 			continue;
 		}
 
@@ -115,7 +115,7 @@ void TopLevelShell(NetworkedJtagInterface& iface)
 	}
 }
 
-void DeviceShell(TestableDevice* pdev)
+void DeviceShell(TestableDevice* pdev, JtagInterface* iface)
 {
 	char prompt[32];
 	size_t index = 0;
@@ -221,7 +221,7 @@ void DeviceShell(TestableDevice* pdev)
 			//Do stuff that takes arguments
 			else if(args[0] == "select")
 			{
-				OnTarget(dynamic_cast<DebuggerInterface*>(pdev), args, index);
+				OnTarget(dynamic_cast<DebuggerInterface*>(pdev), args, index, iface);
 				continue;
 			}
 			else if(args[0] == "program")
@@ -253,7 +253,7 @@ void DeviceShell(TestableDevice* pdev)
 	}
 }
 
-void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget)
+void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget, JtagInterface* iface)
 {
 	if(pdev == NULL)
 	{
@@ -308,6 +308,9 @@ void TargetShell(DebuggableDevice* pdev, unsigned int ndev, unsigned int ntarget
 			//Check for easy commands
 			if( (args[0] == "exit") || (args[0] == "quit") )
 				return;
+
+			else if(args[0] == "reset")
+				iface->ResetToIdle();
 
 			//Look for prefixes of commands that have more complex parsing
 			else if(args[0].find("debug-") == 0)
@@ -394,7 +397,7 @@ void OnTargets(NetworkedJtagInterface& iface)
 	LogNotice("\nNOTE: Capabilities listed are based on ID code scan only, and may be restricted by device security bits.\n");
 }
 
-void OnTarget(DebuggerInterface* iface, const vector<string>& args, unsigned int ndev)
+void OnTarget(DebuggerInterface* iface, const vector<string>& args, unsigned int ndev, JtagInterface* jface)
 {
 	//Sanity checks
 	if(iface == NULL)
@@ -424,7 +427,7 @@ void OnTarget(DebuggerInterface* iface, const vector<string>& args, unsigned int
 	//Run the interactive shell
 	auto ptarget = iface->GetTarget(tnum);
 	LogNotice("Selected target %u: %s\n", tnum, ptarget->GetDescription().c_str());
-	TargetShell(ptarget, ndev, tnum);
+	TargetShell(ptarget, ndev, tnum, jface);
 }
 
 void OnProgram(ProgrammableDevice* pdev, const vector<string>& args)
