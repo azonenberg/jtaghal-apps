@@ -473,6 +473,8 @@ void OnDebugCommand(DebuggableDevice* pdev, const string& cmd, const vector<stri
 		pdev->DebugHalt();
 	else if(cmd == "resume")
 		pdev->DebugResume();
+	else if(cmd == "reset")
+		pdev->Reset();
 	else if(cmd == "regs")
 		pdev->PrintRegisters();
 
